@@ -1,35 +1,45 @@
 import os
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+
+from keras import Sequential
+from keras.src.applications.mobilenet_v2 import MobileNetV2
+from keras.src.callbacks import EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization, GlobalAveragePooling2D
+
+from tensorflow.keras.optimizers import Adam
+
 from data_preprocessing import get_data
 
-
 def build_model(input_shape, num_classes):
+    # Using MobileNetV2 pre-trained model
+    base_model = MobileNetV2(weights='imagenet', include_top=False, input_shape=input_shape)
+    base_model.trainable = False  # Freeze the convolutional base
+
     model = Sequential([
-        Conv2D(32, (3, 3), activation='relu', input_shape=input_shape),
-        MaxPooling2D((2, 2)),
-        Conv2D(64, (3, 3), activation='relu'),
-        MaxPooling2D((2, 2)),
-        Conv2D(128, (3, 3), activation='relu'),
-        MaxPooling2D((2, 2)),
-        Flatten(),
-        Dense(128, activation='relu'),
+        base_model,
+        GlobalAveragePooling2D(),
+        Dense(256, activation='relu'),
+        BatchNormalization(),
         Dropout(0.5),
         Dense(num_classes, activation='softmax')
     ])
-    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+    model.compile(optimizer=Adam(learning_rate=1e-4), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
     return model
 
-
 if __name__ == "__main__":
-    data_dir = '/Users/amirakupov/Desktop/projects/plant_desease/data/PlantVillage'
+    data_dir = '/Users/amirakupov/Desktop/projects/plant_desease/data'  # Update this path to your dataset location
     X_train, X_test, y_train, y_test, datagen = get_data(data_dir)
 
     input_shape = (128, 128, 3)
     num_classes = len(os.listdir(data_dir))
     model = build_model(input_shape, num_classes)
 
-    model.fit(datagen.flow(X_train, y_train, batch_size=32), epochs=25, validation_data=(X_test, y_test))
+    early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, min_lr=1e-6)
+
+    model.fit(datagen.flow(X_train, y_train, batch_size=64), epochs=25, validation_data=(X_test, y_test), callbacks=[early_stopping, reduce_lr])
     model.save('plant_disease_model.h5')
+
+
 
 

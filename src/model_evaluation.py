@@ -12,5 +12,5 @@ def evaluate_model(model_path, data_dir):
     print(f'Accuracy: {accuracy}')
 
 if __name__ == "__main__":
-    data_dir = '/Users/amirakupov/Desktop/projects/plant_desease/data/PlantVillage'
+    data_dir = '/Users/amirakupov/Desktop/projects/plant_desease/data'
     evaluate_model('plant_disease_model.h5', data_dir)
