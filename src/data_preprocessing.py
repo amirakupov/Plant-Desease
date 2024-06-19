@@ -25,11 +25,11 @@ def load_data(data_dir):
 
 def augment_data(X_train):
     datagen = ImageDataGenerator(
-        rotation_range=40,
-        width_shift_range=0.2,
-        height_shift_range=0.2,
-        shear_range=0.2,
-        zoom_range=0.2,
+        rotation_range=20,
+        width_shift_range=0.1,
+        height_shift_range=0.1,
+        shear_range=0.1,
+        zoom_range=0.1,
         horizontal_flip=True,
         fill_mode='nearest',
         brightness_range=[0.8, 1.2]
@@ -48,6 +48,7 @@ if __name__ == "__main__":
     X_train, X_test, y_train, y_test, datagen = get_data(data_dir)
     print(f"Data shape: {X_train.shape}, Labels shape: {y_train.shape}")
     print(f"Testing data shape: {X_test.shape}, Testing labels shape: {y_test.shape}")
+
 
 
 
