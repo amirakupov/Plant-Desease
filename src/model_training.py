@@ -4,12 +4,8 @@ from keras import Sequential
 from keras.src.applications.mobilenet_v2 import MobileNetV2
 from keras.src.callbacks import EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras.layers import GlobalAveragePooling2D, Dense, Dropout, BatchNormalization
-
 from tensorflow.keras.optimizers import Adam
-
-
 from data_preprocessing import get_data
-
 
 def build_model(input_shape, num_classes):
     # Using MobileNetV2 pre-trained model
@@ -33,7 +29,7 @@ def build_model(input_shape, num_classes):
 
 
 if __name__ == "__main__":
-    data_dir = '/Users/amirakupov/Desktop/projects/plant_desease/data'  # Update this path to your dataset location
+    data_dir = '../data'  # Update this path to your dataset location
     X_train, X_test, y_train, y_test, datagen = get_data(data_dir)
 
     input_shape = (128, 128, 3)

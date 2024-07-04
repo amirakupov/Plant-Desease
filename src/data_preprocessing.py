@@ -1,6 +1,8 @@
 import os
 import numpy as np
 import cv2
+import tensorflow
+from tensorflow import keras
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
@@ -44,7 +46,7 @@ def get_data(data_dir):
     return X_train, X_test, y_train, y_test, datagen
 
 if __name__ == "__main__":
-    data_dir = '/Users/amirakupov/Desktop/projects/plant_desease/data'  # Update this path to your dataset location
+    data_dir = '../data'
     X_train, X_test, y_train, y_test, datagen = get_data(data_dir)
     print(f"Data shape: {X_train.shape}, Labels shape: {y_train.shape}")
     print(f"Testing data shape: {X_test.shape}, Testing labels shape: {y_test.shape}")
