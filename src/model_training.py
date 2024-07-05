@@ -2,14 +2,15 @@ import os
 
 from keras import Sequential
 from keras.src.applications.mobilenet_v2 import MobileNetV2
+from keras.src.applications.resnet import ResNet50
 from keras.src.callbacks import EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras.layers import GlobalAveragePooling2D, Dense, Dropout, BatchNormalization
 from tensorflow.keras.optimizers import Adam
 from data_preprocessing import get_data
 
 def build_model(input_shape, num_classes):
-    # Using MobileNetV2 pre-trained model
-    base_model = MobileNetV2(weights='imagenet', include_top=False, input_shape=input_shape)
+    # Using ResNet50 pre-trained model
+    base_model = ResNet50(weights='imagenet', include_top=False, input_tensor=None, input_shape=input_shape)
 
     # Unfreeze only the top few layers of the model for fine-tuning
     for layer in base_model.layers[-4:]:
@@ -27,7 +28,6 @@ def build_model(input_shape, num_classes):
     model.compile(optimizer=Adam(learning_rate=1e-4), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
     return model
 
-
 if __name__ == "__main__":
     data_dir = '../data'  # Update this path to your dataset location
     X_train, X_test, y_train, y_test, datagen = get_data(data_dir)
@@ -42,8 +42,4 @@ if __name__ == "__main__":
     model.fit(datagen.flow(X_train, y_train, batch_size=64), epochs=25, validation_data=(X_test, y_test),
               callbacks=[early_stopping, reduce_lr])
     model.save('plant_disease_model.h5')
-
-
-
-
 

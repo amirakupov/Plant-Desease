@@ -51,7 +51,3 @@ if __name__ == "__main__":
     print(f"Data shape: {X_train.shape}, Labels shape: {y_train.shape}")
     print(f"Testing data shape: {X_test.shape}, Testing labels shape: {y_test.shape}")
 
-
-
-
-
