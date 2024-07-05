@@ -1,9 +1,8 @@
 import numpy as np
-import tensorflow as tf
 import matplotlib.pyplot as plt
-
-from tensorflow.keras.models import Model
+import tensorflow as tf
 from tensorflow.keras.preprocessing import image
+from tensorflow.keras.models import Model
 
 def get_img_array(img_path, size):
     img = image.load_img(img_path, target_size=size)
@@ -55,16 +54,24 @@ def display_gradcam(img_path, heatmap, alpha=0.4):
     plt.axis('off')
     plt.show()
 
-
 if __name__ == "__main__":
+    # Load the pre-trained model
     original_model = tf.keras.models.load_model('plant_disease_model.h5')
 
-    # Create a new model that outputs every intermediate layer
-    layer_outputs = [layer.output for layer in original_model.layers]  # List of layers' output
-    multi_output_model = Model(inputs=original_model.input, outputs=layer_outputs)
+    # Make sure the model is built by calling it on an input
     dummy_input = np.random.random((1, 128, 128, 3))
-    outputs = multi_output_model.predict(dummy_input)
+    _ = original_model.predict(dummy_input)
 
-    # outputs is now a list of Numpy arrays, one array per layer output
-    for i, output in enumerate(outputs):
-        print(f"Output of layer {i} ({original_model.layers[i].name}): {output.shape}")
+    # Path to the image
+    img_path = '../data/output/train-5.png'  # Replace with your image path
+
+    # Prepare image
+    img_size = (128, 128)
+    img_array = get_img_array(img_path, img_size)
+
+    # Generate Grad-CAM heatmap
+    last_conv_layer_name = 'last_conv_layer_name'  # Replace with the actual last conv layer name
+    heatmap = make_gradcam_heatmap(img_array, original_model, last_conv_layer_name)
+
+    # Display heatmap
+    display_gradcam(img_path, heatmap)

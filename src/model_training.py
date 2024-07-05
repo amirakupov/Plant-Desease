@@ -1,18 +1,19 @@
 import os
-
-from keras import Sequential
-from keras.src.applications.mobilenet_v2 import MobileNetV2
-from keras.src.applications.resnet import ResNet50
-from keras.src.callbacks import EarlyStopping, ReduceLROnPlateau
+import tensorflow as tf
+from tensorflow.keras.applications import ResNet50
+from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import GlobalAveragePooling2D, Dense, Dropout, BatchNormalization
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from data_preprocessing import get_data
 
-def build_model(input_shape, num_classes):
-    # Using ResNet50 pre-trained model
-    base_model = ResNet50(weights='imagenet', include_top=False, input_tensor=None, input_shape=input_shape)
+# Enable mixed precision training
+tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
-    # Unfreeze only the top few layers of the model for fine-tuning
+
+def build_model(input_shape, num_classes):
+    base_model = ResNet50(weights='imagenet', include_top=False, input_shape=input_shape)
+
     for layer in base_model.layers[-4:]:
         layer.trainable = True
 
@@ -22,24 +23,25 @@ def build_model(input_shape, num_classes):
         Dense(256, activation='relu'),
         BatchNormalization(),
         Dropout(0.5),
-        Dense(num_classes, activation='softmax')
+        Dense(num_classes, activation='softmax', dtype='float32')  # Output layer should be float32
     ])
 
     model.compile(optimizer=Adam(learning_rate=1e-4), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
     return model
 
-if __name__ == "__main__":
-    data_dir = '../data'  # Update this path to your dataset location
-    X_train, X_test, y_train, y_test, datagen = get_data(data_dir)
 
-    input_shape = (128, 128, 3)
-    num_classes = len(os.listdir(data_dir))
+if __name__ == "__main__":
+    data_dir = '../data'
+    batch_size = 32
+    train_dataset, test_dataset, class_weights = get_data(data_dir, batch_size)
+
+    input_shape = (96, 96, 3)  # Ensure the input shape matches the resized image size
+    num_classes = 2  # Healthy and Diseased
     model = build_model(input_shape, num_classes)
 
     early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, min_lr=1e-6)
 
-    model.fit(datagen.flow(X_train, y_train, batch_size=64), epochs=25, validation_data=(X_test, y_test),
-              callbacks=[early_stopping, reduce_lr])
+    model.fit(train_dataset, epochs=25, validation_data=test_dataset,
+              callbacks=[early_stopping, reduce_lr], class_weight=class_weights)
     model.save('plant_disease_model.h5')
-
