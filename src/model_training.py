@@ -1,6 +1,6 @@
 import os
 import tensorflow as tf
-from tensorflow.keras.applications import ResNet50
+from tensorflow.keras.applications import MobileNetV2
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import GlobalAveragePooling2D, Dense, Dropout, BatchNormalization
 from tensorflow.keras.optimizers import Adam
@@ -12,7 +12,7 @@ tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
 
 def build_model(input_shape, num_classes):
-    base_model = ResNet50(weights='imagenet', include_top=False, input_shape=input_shape)
+    base_model = MobileNetV2(weights='imagenet', include_top=False, input_shape=input_shape)
 
     for layer in base_model.layers[-4:]:
         layer.trainable = True
