@@ -42,6 +42,5 @@ if __name__ == "__main__":
     early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, min_lr=1e-6)
 
-    model.fit(train_dataset, epochs=25, validation_data=test_dataset,
-              callbacks=[early_stopping, reduce_lr], class_weight=class_weights)
+    model.fit(train_dataset, epochs=25, validation_data=test_dataset,callbacks=[early_stopping, reduce_lr], class_weight=class_weights)
     model.save('plant_disease_model.h5')
