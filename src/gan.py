@@ -27,13 +27,11 @@ PREVIEW_MARGIN = 16
 SEED_SIZE = 100
 
 # Configuration
-DATA_PATH = '../data/Pepper__bell___Bacterial_spot'
+DATA_PATH = '../data'
+GAN_PATH = 'gan_models'
 EPOCHS = 50
 BATCH_SIZE = 32
 BUFFER_SIZE = 60000
-
-print(f"Will generate {GENERATE_SQUARE}px square images.")
-
 
 def hms_string(sec_elapsed):
     h = int(sec_elapsed / (60 * 60))
@@ -42,36 +40,35 @@ def hms_string(sec_elapsed):
     return "{}:{:>02}:{:>05.2f}".format(h, m, s)
 
 
-training_binary_path = os.path.join(DATA_PATH,
-                                    f'training_data_{GENERATE_SQUARE}_{GENERATE_SQUARE}.npy')
+def preprocess(training_binary_path):
+    if not os.path.isfile(training_binary_path):
+        start = time.time()
+        print("Loading training images...")
 
-print(f"Looking for file: {training_binary_path}")
+        training_data = []
+        for root, dirs, files in os.walk(DATA_PATH):
+            for filename in tqdm(files):
+                if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                    path = os.path.join(root, filename)
+                    image = Image.open(path).convert('RGB').resize((GENERATE_SQUARE, GENERATE_SQUARE), Image.LANCZOS)
+                    training_data.append(np.asarray(image))
 
-if not os.path.isfile(training_binary_path):
-    start = time.time()
-    print("Loading training images...")
+        training_data = np.array(training_data)
+        training_data = training_data.astype(np.float32)
+        training_data = training_data / 127.5 - 1.
 
-    training_data = []
-    faces_path = os.path.join(DATA_PATH)
-    for filename in tqdm(os.listdir(faces_path)):
-        path = os.path.join(faces_path, filename)
-        image = Image.open(path).resize((GENERATE_SQUARE, GENERATE_SQUARE), Image.LANCZOS)
-        training_data.append(np.asarray(image))
-    training_data = np.reshape(training_data, (-1, GENERATE_SQUARE, GENERATE_SQUARE, IMAGE_CHANNELS))
-    training_data = training_data.astype(np.float32)
-    training_data = training_data / 127.5 - 1.
+        print("Saving training image binary...")
+        np.save(training_binary_path, training_data)
+        elapsed = time.time() - start
+        print(f'Image preprocess time: {hms_string(elapsed)}')
+    else:
+        print("Loading previous training pickle...")
+        training_data = np.load(training_binary_path)
 
-    print("Saving training image binary...")
-    np.save(training_binary_path, training_data)
-    elapsed = time.time() - start
-    print(f'Image preprocess time: {hms_string(elapsed)}')
-else:
-    print("Loading previous training pickle...")
-    training_data = np.load(training_binary_path)
+    # shuffle the data
+    train_dataset = tf.data.Dataset.from_tensor_slices(training_data).shuffle(BUFFER_SIZE).batch(BATCH_SIZE)
 
-# shuffle the data
-train_dataset = tf.data.Dataset.from_tensor_slices(training_data) \
-    .shuffle(BUFFER_SIZE).batch(BATCH_SIZE)
+    return train_dataset
 
 
 def build_generator(seed_size, channels):
@@ -144,7 +141,7 @@ def build_discriminator(image_shape):
     return model
 
 
-def save_images(cnt, noise):
+def save_images(cnt, noise, generator):
     image_array = np.full((
         PREVIEW_MARGIN + (PREVIEW_ROWS * (GENERATE_SQUARE + PREVIEW_MARGIN)),
         PREVIEW_MARGIN + (PREVIEW_COLS * (GENERATE_SQUARE + PREVIEW_MARGIN)), 3),
@@ -159,8 +156,7 @@ def save_images(cnt, noise):
         for col in range(PREVIEW_COLS):
             r = row * (GENERATE_SQUARE + 16) + PREVIEW_MARGIN
             c = col * (GENERATE_SQUARE + 16) + PREVIEW_MARGIN
-            image_array[r:r + GENERATE_SQUARE, c:c + GENERATE_SQUARE] \
-                = generated_images[image_count] * 255
+            image_array[r:r + GENERATE_SQUARE, c:c + GENERATE_SQUARE] = generated_images[image_count] * 255
             image_count += 1
 
     output_path = os.path.join(DATA_PATH, 'output')
@@ -172,39 +168,19 @@ def save_images(cnt, noise):
     im.save(filename)
 
 
-generator = build_generator(SEED_SIZE, IMAGE_CHANNELS)
-
-noise = tf.random.normal([1, SEED_SIZE])
-generated_image = generator(noise, training=False)
-
-plt.imshow(generated_image[0, :, :, 0])
-
-image_shape = (GENERATE_SQUARE, GENERATE_SQUARE, IMAGE_CHANNELS)
-
-discriminator = build_discriminator(image_shape)
-decision = discriminator(generated_image)
-print(decision)
-
-cross_entropy = tf.keras.losses.BinaryCrossentropy()
-
-
-def discriminator_loss(real_output, fake_output):
+def discriminator_loss(real_output, fake_output, cross_entropy):
     real_loss = cross_entropy(tf.ones_like(real_output), real_output)
     fake_loss = cross_entropy(tf.zeros_like(fake_output), fake_output)
     total_loss = real_loss + fake_loss
     return total_loss
 
 
-def generator_loss(fake_output):
+def generator_loss(fake_output, cross_entropy):
     return cross_entropy(tf.ones_like(fake_output), fake_output)
 
 
-generator_optimizer = tf.keras.optimizers.Adam(1.5e-4, 0.5)
-discriminator_optimizer = tf.keras.optimizers.Adam(1.5e-4, 0.5)
-
-
 @tf.function
-def train_step(images):
+def train_step(images, generator, discriminator, cross_entropy, generator_optimizer, discriminator_optimizer):
     seed = tf.random.normal([BATCH_SIZE, SEED_SIZE])
 
     with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
@@ -213,23 +189,18 @@ def train_step(images):
         real_output = discriminator(images, training=True)
         fake_output = discriminator(generated_images, training=True)
 
-        gen_loss = generator_loss(fake_output)
-        disc_loss = discriminator_loss(real_output, fake_output)
+        gen_loss = generator_loss(fake_output, cross_entropy)
+        disc_loss = discriminator_loss(real_output, fake_output, cross_entropy)
 
-        gradients_of_generator = gen_tape.gradient( \
-            gen_loss, generator.trainable_variables)
-        gradients_of_discriminator = disc_tape.gradient( \
-            disc_loss, discriminator.trainable_variables)
+        gradients_of_generator = gen_tape.gradient(gen_loss, generator.trainable_variables)
+        gradients_of_discriminator = disc_tape.gradient(disc_loss, discriminator.trainable_variables)
 
-        generator_optimizer.apply_gradients(zip(
-            gradients_of_generator, generator.trainable_variables))
-        discriminator_optimizer.apply_gradients(zip(
-            gradients_of_discriminator,
-            discriminator.trainable_variables))
+        generator_optimizer.apply_gradients(zip(gradients_of_generator, generator.trainable_variables))
+        discriminator_optimizer.apply_gradients(zip(gradients_of_discriminator, discriminator.trainable_variables))
     return gen_loss, disc_loss
 
 
-def train(dataset, epochs):
+def train(dataset, epochs, generator, discriminator, cross_entropy, generator_optimizer, discriminator_optimizer):
     fixed_seed = np.random.normal(0, 1, (PREVIEW_ROWS * PREVIEW_COLS, SEED_SIZE))
     start = time.time()
 
@@ -240,7 +211,7 @@ def train(dataset, epochs):
         disc_loss_list = []
 
         for image_batch in dataset:
-            t = train_step(image_batch)
+            t = train_step(image_batch, generator, discriminator, cross_entropy, generator_optimizer, discriminator_optimizer)
             gen_loss_list.append(t[0])
             disc_loss_list.append(t[1])
 
@@ -248,12 +219,49 @@ def train(dataset, epochs):
         d_loss = sum(disc_loss_list) / len(disc_loss_list)
 
         epoch_elapsed = time.time() - epoch_start
-        print(f'Epoch {epoch + 1}, gen loss={g_loss},disc loss={d_loss},' \
-              ' {hms_string(epoch_elapsed)}')
-        save_images(epoch, fixed_seed)
+        print(f'Epoch {epoch + 1}, gen loss={g_loss},disc loss={d_loss}, {hms_string(epoch_elapsed)}')
+        save_images(epoch, fixed_seed, generator)
+
+        # Save the models after each epoch
+        generator.save(os.path.join(GAN_PATH, f'generator_epoch_{epoch+1}.h5'))
+        generator.save(os.path.join(GAN_PATH, f'generator.h5'))
+        discriminator.save(os.path.join(GAN_PATH, f'discriminator_epoch_{epoch+1}.h5'))
+        discriminator.save(os.path.join(GAN_PATH, f'discriminator.h5'))
 
     elapsed = time.time() - start
     print(f'Training time: {hms_string(elapsed)}')
 
 
-train(train_dataset, EPOCHS)
+def main():
+    print(f"Will generate {GENERATE_SQUARE}px square images.")
+
+    training_binary_path = os.path.join(DATA_PATH, f'training_data_{GENERATE_SQUARE}_{GENERATE_SQUARE}.npy')
+    print(f"Looking for file: {training_binary_path}")
+
+    train_dataset = preprocess(training_binary_path)
+
+    generator_path = os.path.join(GAN_PATH, 'generator.h5')
+    discriminator_path = os.path.join(GAN_PATH, 'discriminator.h5')
+
+    if os.path.exists(generator_path) and os.path.exists(discriminator_path):
+        generator = load_model(generator_path)
+        discriminator = load_model(discriminator_path)
+        print("Loaded existing models.")
+    else:
+        generator = build_generator(SEED_SIZE, IMAGE_CHANNELS)
+        discriminator = build_discriminator((GENERATE_SQUARE, GENERATE_SQUARE, IMAGE_CHANNELS))
+        print("Created new models.")
+
+    noise = tf.random.normal([1, SEED_SIZE])
+    generated_image = generator(noise, training=False)
+    plt.imshow(generated_image[0, :, :, 0])
+
+    cross_entropy = tf.keras.losses.BinaryCrossentropy()
+
+    generator_optimizer = tf.keras.optimizers.Adam(1.5e-4, 0.5)
+    discriminator_optimizer = tf.keras.optimizers.Adam(1.5e-4, 0.5)
+
+    train(train_dataset, EPOCHS, generator, discriminator, cross_entropy, generator_optimizer, discriminator_optimizer)
+
+if __name__ == "__main__":
+    main()
